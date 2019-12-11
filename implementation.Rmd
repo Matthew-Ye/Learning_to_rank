@@ -1,0 +1,107 @@
+---
+title: "Implementation of pointwise"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Here we implement a simple case of usage of pointwise to ranking the dataset we defined. We convert it to an classification problem and the label in our dataset is defined manually among {0,1,2,3}. The machine learning algorithm we used is random forest with 5  fold cross validation. Finally, we rank the prediction result according to the pred label.
+
+## Loading libraries and setup
+
+```{r}
+setwd('/Users/mingjie/Desktop/[IR]ltr')
+suppressMessages(require(randomForest)) 
+library(data.table)
+library(caret)
+ohsumed.dt <- fread("./data/dataset.csv", sep = ",", header=TRUE)
+head(ohsumed.dt)
+```
+
+Name the dataset:
+```{r}
+## rename 
+col.names <- paste(rep("C", 3), seq(1:3), sep = "")
+col.names <- c("r", "qid", "docid", col.names)
+setnames(ohsumed.dt, col.names)
+## use the benefits of data.table to quicly prepare the data.
+letor <- ohsumed.dt
+
+## visualize a small fraction data
+head(letor)
+
+```
+
+```{r}
+length(unique(letor$qid)) ## number of queries
+```
+
+```{r}
+length(unique(letor$docid)) ## unique docid
+```
+
+## Prepare data
+
+Column "r" = relevance: The larger value the relevance label has, the more
+relevant the query-docs pair. For this assignment I am going to consider 2,3 as
+relevant and 0,1 as irrelevant 
+
+```{r pressure, echo=FALSE}
+## set aside ~20% of the data for final testing
+set.seed(100)
+## random index
+rIdx <- sample(nrow(letor), nrow(letor)*0.8)
+
+train <- letor[rIdx, ]
+test <- letor[-rIdx, ]
+```
+
+## Model
+
+Here, we define our train control with 5 fold cv and use random forest to train. The features are C1,C2,C3; the lable is r.
+```{r}
+# Define train control for k fold cross validation
+train_control <- trainControl(method="cv", number=5)
+##fit the model
+formula <- as.factor(r) ~ C1+C2+C3
+
+rf.fit <- randomForest(formula, train, importance=TRUE, trControl=train_control)
+varImpPlot(rf.fit)
+```
+
+The predicted classification and confusion matrix. We could find that the accuracy is 100%.
+```{r}
+prediction <- predict(rf.fit, test)
+confusionMatrix(prediction, factor(test$r,levels = c(0,1,2,3)))
+```
+
+## Ranking
+
+Finally, we rank the test set according to the predicted classification:
+```{r}
+rankdf <- data.frame(qid = test$qid, docid = test$docid, r= test$r, pred = prediction)
+rankdf <- rankdf[order(rankdf$pred, decreasing = TRUE),] 
+rankdf
+```
+
+Given a query, return the ranking. Here, we use query 1 (glucose in blood) as example.
+```{r}
+rankdf[rankdf[, "qid"] == 1,]
+```
+
+Because the dataset provided is pretty small, we show the ranking for the whole dataset including training and testing in order to visualize better.
+
+```{r}
+ranking <- predict(rf.fit, letor)
+rankdf2 <- data.frame(qid = letor$qid, docid = letor$docid, r= letor$r, pred = ranking)
+rankdf2 <- rankdf2[order(rankdf2$pred, decreasing = TRUE),] 
+rankdf2
+```
+
+```{r}
+rankdf2[rankdf2[, "qid"] == 1,]
+```
